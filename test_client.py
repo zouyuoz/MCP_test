@@ -33,8 +33,8 @@ async def main():
             test_args_1 = {
                 "start_date": "2026-08-15",
                 "end_date": "2026-08-17",
-                "line": "LINE_SMT_01",
-                "plant": "PLANT_A",
+                "line": "SMT01",
+                "plant": "FC2A",
                 "shift_type": "Day shift"
             }
             print(f"傳入參數: {json.dumps(test_args_1, ensure_ascii=False)}")

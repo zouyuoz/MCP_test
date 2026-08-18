@@ -4,3 +4,4 @@ __pycache__/
 .vscode/
 
 secret.*
+a_single*

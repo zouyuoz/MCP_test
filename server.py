@@ -22,7 +22,7 @@ def _safe_float(val: Optional[str], default: float = 0.0) -> float:
         return default
 
 def _load_and_deduplicate_records() -> list[dict]:
-    """讀取 oeedetail.json 並處理 Upsert / 去重邏輯 (按 SYNCID 與 SYNCACTION)"""
+    """讀取 oeedetail.json 並處理 Upsert / 去重邏輯 (支援 Kafka Envelope 與純 Message 結構)"""
     if not os.path.exists(DATA_FILE):
         return []
     
@@ -32,7 +32,15 @@ def _load_and_deduplicate_records() -> list[dict]:
     # 按照 SYNCID 處理 Upsert (I/U) 與 Delete (D)
     records_by_id = {}
     for event in raw_events:
-        evt_data = event.get("evt_data", {})
+        # 相容 Kafka Envelope (包含 Timestamp, Topic, Message) 與扁平結構
+        if "Message" in event and isinstance(event["Message"], dict):
+            evt_data = event["Message"].get("evt_data", {})
+        else:
+            evt_data = event.get("evt_data", {})
+
+        if not evt_data:
+            continue
+
         sync_id = evt_data.get("SYNCID")
         action = evt_data.get("SYNCACTION", "I")
         
