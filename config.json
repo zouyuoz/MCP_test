@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "my-custom-server": {
+      "command": "python",
+      "args": [
+        "C:/Users/zyqio/source/repos/MCP_test/server.py"
+      ]
+    }
+  }
+}

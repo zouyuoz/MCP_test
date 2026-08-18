@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP Server & DeepAgents 專案流程架構圖</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-green: #4ade80;
+      --accent-purple: #c084fc;
+      --accent-amber: #fbbf24;
+      --accent-rose: #fb7185;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      padding: 40px 20px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    /* 流程圖外容器 */
+    .flowchart {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+    }
+
+    /* 單一步驟卡片 */
+    .step-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s, border-color 0.2s;
+      position: relative;
+    }
+
+    .step-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-blue);
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .step-badge {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+
+    .step-1 .step-badge { background: rgba(56, 189, 248, 0.2); color: var(--accent-blue); border: 1px solid var(--accent-blue); }
+    .step-2 .step-badge { background: rgba(192, 132, 252, 0.2); color: var(--accent-purple); border: 1px solid var(--accent-purple); }
+    .step-3 .step-badge { background: rgba(251, 191, 36, 0.2); color: var(--accent-amber); border: 1px solid var(--accent-amber); }
+    .step-4 .step-badge { background: rgba(74, 222, 128, 0.2); color: var(--accent-green); border: 1px solid var(--accent-green); }
+    .step-5 .step-badge { background: rgba(251, 113, 133, 0.2); color: var(--accent-rose); border: 1px solid var(--accent-rose); }
+
+    .step-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+
+    .step-desc {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 14px;
+    }
+
+    .code-pill {
+      display: inline-block;
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #38bdf8;
+      font-family: Consolas, monospace;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    .details-box {
+      background: #0b1120;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.88rem;
+      border-left: 3px solid var(--accent-blue);
+    }
+
+    .step-2 .details-box { border-left-color: var(--accent-purple); }
+    .step-3 .details-box { border-left-color: var(--accent-amber); }
+    .step-4 .details-box { border-left-color: var(--accent-green); }
+    .step-5 .details-box { border-left-color: var(--accent-rose); }
+
+    /* 連接箭頭 */
+    .arrow-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 24px;
+    }
+
+    .arrow-icon {
+      width: 24px;
+      height: 24px;
+      fill: none;
+      stroke: #64748b;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* 關鍵模組對照表 */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 40px;
+    }
+
+    .summary-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .summary-card h3 {
+      font-size: 1rem;
+      color: var(--accent-blue);
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>MCP Server & DeepAgents 運作流程</h1>
+    <p>從自然語言提問、MCP 協議通訊，到資料庫/JSON 動態運算的完整鏈路</p>
+  </header>
+
+  <div class="flowchart">
+
+    <!-- 步驟 1 -->
+    <div class="step-card step-1">
+      <div class="step-header">
+        <div class="step-badge">1</div>
+        <div class="step-title">MCP Server 啟動與工具註冊 (<span class="code-pill">server.py</span>)</div>
+      </div>
+      <div class="step-desc">
+        以標準協議 (stdio) 啟動微服務，向外宣告具備的 API 工具能力。
+      </div>
+      <div class="details-box">
+        • 註冊工具 1：<code>get_oee_detail</code> (查詢區間工時、平均稼動效率)<br>
+        • 註冊工具 2：<code>get_low_efficiency_lines</code> (診斷效率 &lt; 80% 的異常產線)<br>
+        • 傳輸模式：<code>stdio</code> (標準輸入輸出，跨進程安全通訊)
+      </div>
+    </div>
+
+    <div class="arrow-container">
+      <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+    </div>
+
+    <!-- 步驟 2 -->
+    <div class="step-card step-2">
+      <div class="step-header">
+        <div class="step-badge">2</div>
+        <div class="step-title">DeepAgents 連線與工具探索 (<span class="code-pill">run_deepagent.py</span>)</div>
+      </div>
+      <div class="step-desc">
+        Agent 初始化時向 MCP Server 發送交握與工具清單請求。
+      </div>
+      <div class="details-box">
+        • 透過 <code>MultiServerMCPClient</code> 連接子進程 <code>server.py</code><br>
+        • 自動取得 Tools 的 JSON Schema (含參數型態、說明文件 docstring)<br>
+        • 將 MCP Tools 封裝並綁定給 LLM (Google Gemini / OpenAI / Claude)
+      </div>
+    </div>
+
+    <div class="arrow-container">
+      <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+    </div>
+
+    <!-- 步驟 3 -->
+    <div class="step-card step-3">
+      <div class="step-header">
+        <div class="step-badge">3</div>
+        <div class="step-title">使用者輸入與 LLM 意圖推理 (ReAct 決策)</div>
+      </div>
+      <div class="step-desc">
+        接收使用者提問，LLM 自主判斷需調用哪些 MCP 工具。
+      </div>
+      <div class="details-box">
+        • <strong>使用者 Prompt</strong>：「請幫我分析 8/15 ~ 8/17 的 OEE 狀況，並列出效率低於 80% 的產線。」<br>
+        • <strong>LLM 決策</strong>：產生 Tool Call 參數（例如 <code>{"start_date": "2026-08-15", "end_date": "2026-08-17"}</code>）
+      </div>
+    </div>
+
+    <div class="arrow-container">
+      <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+    </div>
+
+    <!-- 步驟 4 -->
+    <div class="step-card step-4">
+      <div class="step-header">
+        <div class="step-badge">4</div>
+        <div class="step-title">資料讀取、去重與指標運算 (<span class="code-pill">oeedetail.json</span>)</div>
+      </div>
+      <div class="step-desc">
+        <code>server.py</code> 收到呼叫請求，執行業務邏輯並返回結構化 JSON。
+      </div>
+      <div class="details-box">
+        • 讀取 <code>oeedetail.json</code> 原始 Kafka 事件流<br>
+        • 執行 <strong>Upsert / 去重</strong> (依 <code>SYNCID</code> 與 <code>SYNCACTION</code> 處理新增/更新/刪除)<br>
+        • 即時運算 Summary 指標：$\text{總出勤} = 570\text{h}, \text{總損失} = 96.6\text{h}, \text{平均效率} = 83.05\%$
+      </div>
+    </div>
+
+    <div class="arrow-container">
+      <svg class="arrow-icon" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+    </div>
+
+    <!-- 步驟 5 -->
+    <div class="step-card step-5">
+      <div class="step-header">
+        <div class="step-badge">5</div>
+        <div class="step-title">LLM 彙整與最終回覆 (Final Response)</div>
+      </div>
+      <div class="step-desc">
+        LLM 接收 MCP 回傳的真實數據，組織成結構清晰的專業分析回覆。
+      </div>
+      <div class="details-box">
+        • 📊 <strong>總體數據總結</strong>：出勤工時、標準工時、損失率與全廠平均效率<br>
+        • ⚠️ <strong>精準異常定位</strong>：指出 <code>LINE_TEST_01</code> 效率僅 68.0% (損失 25.6 小時)
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 關鍵檔案速查 -->
+  <div class="summary-grid">
+    <div class="summary-card">
+      <h3>📁 server.py</h3>
+      <p style="font-size: 0.88rem; color: var(--text-muted);">
+        MCP Server 核心。定義工具、參數防呆、載入資料並提供標準 stdio API 介面。
+      </p>
+    </div>
+    <div class="summary-card">
+      <h3>📁 oeedetail.json</h3>
+      <p style="font-size: 0.88rem; color: var(--text-muted);">
+        模擬 Data Portal 訂閱的 Kafka OEE 事件資料，支援時間維度與字串數值防護。
+      </p>
+    </div>
+    <div class="summary-card">
+      <h3>📁 run_deepagent.py</h3>
+      <p style="font-size: 0.88rem; color: var(--text-muted);">
+        DeepAgents 主調度程式。連接 MCP Server、綁定 LLM (Gemini/OpenAI) 並執行問答。
+      </p>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
