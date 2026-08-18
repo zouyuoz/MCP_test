@@ -39,6 +39,23 @@ async def main():
     print(f"💬 Prompt: {prompt}\n⏳ DeepAgent 思考與呼叫 MCP 工具中...\n")
 
     result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
+
+    print("==================================================")
+    print("🔍 [DeepAgent 工具調用軌跡 (Tool Calls)]")
+    print("==================================================")
+    for msg in result["messages"]:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                print(f"🔧 [LLM 調用工具] : {tc['name']}")
+                print(f"   傳入參數 : {tc['args']}\n")
+        elif getattr(msg, "type", None) == "tool":
+            preview = str(msg.content)[:256] + "..." if len(str(msg.content)) > 256 else str(msg.content)
+            print(f"📦 [MCP Server 回傳] ({getattr(msg, 'name', 'tool')}):")
+            print(f"   {preview}\n")
+
+    print("==================================================")
+    print("🎯 [DeepAgent 最終分析回覆]")
+    print("==================================================")
     print(result["messages"][-1].content)
 
 if __name__ == "__main__":
