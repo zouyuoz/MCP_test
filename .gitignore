@@ -5,3 +5,5 @@ __pycache__/
 
 secret.*
 a_single*
+
+agent_results/
