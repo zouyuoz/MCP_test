@@ -154,7 +154,8 @@ async def main():
 
     agent = create_deep_agent(model=model, tools=tools, system_prompt=system_prompt)
 
-    prompt = "請幫我分析 2026-08-15 到 2026-08-17 期間所有廠別的 OEE 狀況，並特別指出效率低於 80% 的產線是哪一條、損失多少工時？"
+    # prompt = "請幫我分析 2026-08-15 到 2026-08-17 期間所有廠別的 OEE 狀況，並特別指出效率低於 80% 的產線是哪一條、損失多少工時？"
+    prompt = "檢查 20260810 整天，S05 的 SMT 印刷機，前刮刀的壓力是多少，是否有異常"
     print(f"💬 Prompt: {prompt}\n⏳ DeepAgent 思考與呼叫 MCP 工具中...\n")
 
     result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
