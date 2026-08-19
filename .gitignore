@@ -7,3 +7,5 @@ secret.*
 a_single*
 
 agent_results/
+plan_tools/
+schemas/

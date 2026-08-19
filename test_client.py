@@ -22,33 +22,36 @@ async def main():
 
             # 3. 列出可用的 Tools
             tools_response = await session.list_tools()
-            print("=== [3/4] 可用工具清單 (Tools) ===")
+            print(f"=== [3/4] 可用工具清單 ({len(tools_response.tools)} 個 Tools) ===")
             for tool in tools_response.tools:
                 print(f"• 工具名稱: {tool.name}")
-                print(f"  說明: {tool.description.strip() if tool.description else '無'}")
-                print(f"  參數綱要: {json.dumps(getattr(tool, 'input_schema', getattr(tool, 'inputSchema', {})), ensure_ascii=False, indent=2)}\n")
+                print(f"  說明: {tool.description.strip() if tool.description else '無'}\n")
 
-            # 4. 測試呼叫 1: get_oee_detail 工具
-            print("=== [4/5] 測試呼叫 1: get_oee_detail ===")
+            # 4. 測試呼叫 1: get_line_metrics_summary
+            print("=== [4/4] 測試呼叫: get_line_metrics_summary ===")
             test_args_1 = {
                 "start_date": "2026-08-15",
                 "end_date": "2026-08-17",
-                "line": "SMT01",
-                "plant": "FC2A",
-                "shift_type": "Day shift"
+                "line": "LINE_SMT_01",
+                "metrics": ["oee", "fpyr"]
             }
             print(f"傳入參數: {json.dumps(test_args_1, ensure_ascii=False)}")
-            result_1 = await session.call_tool(name="get_oee_detail", arguments=test_args_1)
+            result_1 = await session.call_tool(name="get_line_metrics_summary", arguments=test_args_1)
             for content in result_1.content:
                 print(content.text if hasattr(content, "text") else content)
 
-            # 5. 測試呼叫 2: get_low_efficiency_lines 工具
-            print("\n=== [5/5] 測試呼叫 2: get_low_efficiency_lines ===")
-            test_args_2 = {"target_date": "2026-08-17", "threshold_pct": 80.0}
-            print(f"傳入參數: {json.dumps(test_args_2, ensure_ascii=False)}")
-            result_2 = await session.call_tool(name="get_low_efficiency_lines", arguments=test_args_2)
+            # 5. 測試呼叫 2: analyze_cross_process_correlation
+            print("\n=== 測試呼叫: analyze_cross_process_correlation ===")
+            test_args_2 = {
+                "line": "LINE_SMT_01",
+                "start_time": "2026-08-17 08:00:00",
+                "end_time": "2026-08-17 17:00:00",
+                "defect_type": "solder_bridge"
+            }
+            result_2 = await session.call_tool(name="analyze_cross_process_correlation", arguments=test_args_2)
             for content in result_2.content:
                 print(content.text if hasattr(content, "text") else content)
 
 if __name__ == "__main__":
     asyncio.run(main())
+
