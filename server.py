@@ -23,9 +23,9 @@ class SchemaDataManager:
     _instance = None
     schemas_metadata: Dict[str, Dict[str, Any]] = {}
     
-    # 測試/本地資料檔目錄 (預設與此檔同目錄或 data/ 目錄)
     BASE_DIR = Path(__file__).parent
     SCHEMA_DIR = BASE_DIR / "schemas"
+    DATA_DIR = BASE_DIR / "subscribed_datas"
 
     def __new__(cls):
         if cls._instance is None:
@@ -44,7 +44,6 @@ class SchemaDataManager:
             try:
                 with open(schema_file, "r", encoding="utf-8") as f:
                     content = json.load(f)
-                    # 保留完整原始檔名作為 Key (如 "aiot_smt_printer_real_processing_data_wihn2")
                     file_key = schema_file.stem
                     self.schemas_metadata[file_key] = content
                     count += 1
@@ -58,16 +57,30 @@ class SchemaDataManager:
 
     def load_data_records(self, raw_filename_stem: str) -> List[Dict[str, Any]]:
         """
-        讀取實際資料檔 (目前尋找根目錄或 data/ 目錄下的 .json)
-        包含 SYNCID / SYNCACTION 去重 Upsert 處理
+        從 subscribed_datas/ 目錄讀取實際資料檔 (如 wih.cim.dpm20.alert.json 或 wih.mfgdp.aiot.aiot_smt_printer_processing_data_wihn2.json)
+        包含完整的多檔名降級對照匹配 (Fallback Matching) 與 SYNCID / SYNCACTION 去重 Upsert 處理
         """
-        # 尋找本地有無同名的資料檔 (例如 oeedetail.json)
-        data_path = self.BASE_DIR / f"{raw_filename_stem}.json"
-        if not data_path.exists():
-            data_path = self.BASE_DIR / "data" / f"{raw_filename_stem}.json"
+        # 建立可能的檔名匹配清單 (包含完整包名、純簡稱、根目錄及 subscribed_datas/ 目錄)
+        candidates = [
+            # 1. 完整全名 (Group 1 & 2)
+            self.DATA_DIR / f"wih.cim.dpm20.{raw_filename_stem}.json",
+            self.DATA_DIR / f"wih.cim.sfcs.{raw_filename_stem}.json",
+            # 2. 完整全名 (Group 3~6 SMT AioT)
+            self.DATA_DIR / f"wih.mfgdp.aiot.{raw_filename_stem}.json",
+            # 3. 檔名直接相符 (subscribed_datas 目錄)
+            self.DATA_DIR / f"{raw_filename_stem}.json",
+            # 4. 相容無包名的簡易檔名 (根目錄與 data/ 目錄)
+            self.BASE_DIR / f"{raw_filename_stem}.json",
+            self.BASE_DIR / "data" / f"{raw_filename_stem}.json",
+        ]
+
+        data_path = None
+        for cand in candidates:
+            if cand.exists():
+                data_path = cand
+                break
         
-        if not data_path.exists():
-            # 若無檔案則回傳空清單 (生產環境此處連接 DB / API)
+        if not data_path:
             return []
 
         try:
@@ -97,7 +110,7 @@ class SchemaDataManager:
 
             return list(records_by_id.values())
         except Exception as e:
-            print(f"❌ Error loading data file for {raw_filename_stem}: {e}")
+            print(f"❌ Error loading data file from {data_path}: {e}")
             return []
 
 # 初始化單例數據管理器
