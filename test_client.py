@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -11,12 +12,12 @@ async def main():
     server_script = str(Path(__file__).parent / "server.py")
 
     server_params = StdioServerParameters(
-        command="python",
+        command=sys.executable,
         args=[server_script]
     )
 
     print("[1/4] 連線至 SMT SQL MCP Server (server.py)...")
-    
+
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -31,17 +32,21 @@ async def main():
 
             # 4. 測試呼叫 Tool 1: list_available_tables
             print("=== [4/6] 測試 1: list_available_tables ===")
-            res1 = await session.call_tool(name="list_available_tables", arguments={"keyword": "aoi"})
+            res1 = await session.call_tool(name="list_available_tables", arguments={"keyword": "printer"})
             print(res1.content[0].text if res1.content else "無內容")
 
             # 5. 測試呼叫 Tool 2: get_table_schema
             print("\n=== [5/6] 測試 2: get_table_schema ===")
-            res2 = await session.call_tool(name="get_table_schema", arguments={"table_name": "oeedetail"})
+            res2 = await session.call_tool(name="get_table_schema", arguments={"table_name": "aiot_smt_printer_real_processing_data_wihn2"})
             print(res2.content[0].text if res2.content else "無內容")
 
-            # 6. 測試呼叫 Tool 3: execute_sql_query (含 AVG 統計與 event_time 時間過濾)
+            # 6. 測試呼叫 Tool 3: execute_sql_query (驗證真實資料載入、AVG 統計、時間轉換與前幾筆樣本)
             print("\n=== [6/6] 測試 3: execute_sql_query ===")
-            sql_test = "SELECT AVG(CAST(front_pressure AS FLOAT)) AS avg_front_pressure, COUNT(*) AS total_cnt FROM aiot_smt_printer_real_processing_data_wihn2 WHERE event_time >= '2026-08-01'"
+            sql_test = (
+                "SELECT line, machine_name, front_pressure, rear_pressure, event_time "
+                "FROM aiot_smt_printer_real_processing_data_wihn2 "
+                "ORDER BY event_time DESC LIMIT 3"
+            )
             res3 = await session.call_tool(name="execute_sql_query", arguments={"sql_query": sql_test})
             print(res3.content[0].text if res3.content else "無內容")
 

@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import sys
 from datetime import datetime
 from dotenv import load_dotenv
 from deepagents import create_deep_agent
@@ -22,7 +23,7 @@ def get_model():
         )
     if api_key := (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model_name = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key)
     if os.getenv("ANTHROPIC_API_KEY"):
         from langchain_anthropic import ChatAnthropic
@@ -81,11 +82,14 @@ def _to_serializable(obj):
 def save_agent_result(result: dict, prompt: str, filepath: str = None) -> str:
     """
     完整儲存 Agent 執行的全部生命週期（問題 + 思考/工具調用軌跡 + MCP 回傳 + 最終回應 + 完整 Raw State）
-    預設儲存為含時間戳記的檔案名：agent_result_YYYYMMDD_HHMMSS.json
+    預設儲存為含時間戳記的檔案名：agent_results/YYYYMMDD_HHMMSS.json
     """
     if not filepath:
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         filepath = f"agent_results/{timestamp_str}.json"
+
+    # 自動建立目錄
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
     messages = result.get("messages", [])
 
@@ -139,52 +143,86 @@ def save_agent_result(result: dict, prompt: str, filepath: str = None) -> str:
 
     return filepath
 
-async def main():
-    server_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "server.py")).replace("\\", "/")
-    client = MultiServerMCPClient({"smt_server": {"command": "python", "args": [server_path], "transport": "stdio"}})
-    
-    tools = await client.get_tools()
-    model = get_model()
+# ponytail: tool-result-pruning | Ceiling: In-place message trimmer for multi-turn history. Upgrade path: LangGraph State Trimmer if stateful checkpoints used.
+def prune_tool_messages(messages: list) -> list:
+    """修剪中間查字典過程 (list_available_tables / get_table_schema) 的冗長回傳，避免多輪對話 Context 爆炸"""
+    pruned = []
+    for msg in messages:
+        if getattr(msg, "type", None) == "tool" and getattr(msg, "name", "") in ["list_available_tables", "get_table_schema"]:
+            short_content = f"[Pruned: Schema/Table inspection for {getattr(msg, 'name', '')} completed]"
+            msg_copy = type(msg)(content=short_content, tool_call_id=getattr(msg, "tool_call_id", None), name=getattr(msg, "name", None))
+            pruned.append(msg_copy)
+        else:
+            pruned.append(msg)
+    return pruned
 
-    system_prompt = """你是一個專業的 SMT 電子製造與工廠大數據分析專家助手。
+from langchain_mcp_adapters.tools import load_mcp_tools
+
+async def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+
+    print("[1/4] 啟動 SMT MCP Server 連線 (server.py)...", flush=True)
+    server_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "server.py")).replace("\\", "/")
+    client = MultiServerMCPClient({"smt_server": {"command": sys.executable, "args": [server_path], "transport": "stdio"}})
+
+    async with client.session("smt_server") as session:
+        await session.initialize()
+        print("[2/4] 取得 MCP Tools 清單...", flush=True)
+        tools = await load_mcp_tools(session)
+        print(f"      成功載入 {len(tools)} 個工具: {[t.name for t in tools]}", flush=True)
+
+        print("[3/4] 初始化 LLM 模型 (Gemini 3.6 Flash)...", flush=True)
+        model = get_model()
+
+        system_prompt = """你是一個專業的 SMT 電子製造與工廠大數據分析專家助手。
 你擁有訪問工廠數據庫的 MCP 工具（涵蓋製造績效 DPM20、製程追蹤 SFCS 與 SMT 設備感測 AIoT 等 42 張資料表）。
 
+【三大 Token-Saving 黃金準則（最高優先級）】
+1. 嚴禁 SELECT * (Selective Projection)：
+   • 僅能 SELECT 問題所需的核心欄位（例如 `SELECT line, front_pressure, event_time`），嚴禁使用 SELECT * 把無關欄位全撈進 Context。
+2. 資料庫內聚合 (In-DB Aggregation)：
+   • 嚴禁將數百筆原始資料撈回給 LLM 自己算平均或統計！統計數值時必須在 SQL 內寫 `AVG()`, `COUNT()`, `SUM()`, `MAX()`, `MIN()`, `GROUP BY` 等，讓 SQLite 只回傳 1~5 行計算結果。
+3. 精準關鍵字探索：
+   • 呼叫 `list_available_tables` 時【必須帶入具體 keyword】（例如 `keyword="印刷機 刮刀 壓力"` 或 `keyword="printer"`），不要無條件拉取全表清單。
+
 【數據查詢標準 SOP 與引導原則】
-1. 探索定位 (Discovery)：當需要查詢數據時，若不確定確切表名，請優先呼叫 `list_available_tables`（可帶關鍵字如 "printer", "良率", "AOI" 或類別）尋找合適的資料表。
-2. 字典驗證 (Inspection)：在撰寫 SQL 查詢前，務必先呼叫 `get_table_schema` 查明該資料表的正確欄位名稱、型別與中文說明，【嚴禁憑空捏造或猜測欄位名稱】。
+1. 探索定位 (Discovery)：若不確定確切表名，優先呼叫 `list_available_tables(keyword=...)` 精準定位 1~3 張目標表。
+2. 字典驗證 (Inspection)：在撰寫 SQL 查詢前，先呼叫 `get_table_schema(table_name=...)` 查明欄位名稱與型別，【嚴禁憑空猜測欄位名稱】。
 3. 標準時間過濾：所有資料表均已自動補上標準化時間欄位 `event_time` (格式: `YYYY-MM-DD HH:MM:SS`)，請優先在 SQL 的 `WHERE` 條件中使用 `event_time` 進行時間區間過濾。
-4. 數值計算轉型：底層資料庫為 SQLite in-memory，JSON 中的數值欄位若需進行聚合計算 (如 AVG, SUM, MAX, MIN) 或大小比較時，建議使用 `CAST(column_name AS FLOAT)` 以確保計算精確。
-5. 唯讀與自我修復 (Self-Healing)：僅支援 SELECT 查詢。若 `execute_sql_query` 執行回傳錯誤，請仔細閱讀錯誤提示 (hint / message)，修正欄位名稱或語法後重新查詢。
+4. 數值計算轉型：SQLite 中的數值欄位若需進行聚合計算或大小比較，建議使用 `CAST(column_name AS FLOAT)` (例如 `AVG(CAST(front_pressure AS FLOAT))`) 以確保計算精確。
+5. 唯讀與自我修復 (Self-Healing)：僅支援 SELECT 查詢。若 `execute_sql_query` 執行回傳錯誤，請閱讀提示修正後重試。
 6. 專業總結：取得真實數據後，結合 SMT 製造專業領域知識，向使用者提供結構化、客觀且具洞察力的分析與改善建議。"""
 
-    agent = create_deep_agent(model=model, tools=tools, system_prompt=system_prompt)
+        agent = create_deep_agent(model=model, tools=tools, system_prompt=system_prompt)
 
-    # 測試提問範例
-    prompt = "檢查 2026-08-10 整天，S05 產線的 SMT 印刷機，前刮刀的壓力是多少，是否有異常？"
-    print(f"💬 Prompt: {prompt}\n⏳ DeepAgent 思考與呼叫 MCP 工具中...\n")
+        # 測試提問範例
+        prompt = "檢查 2026-08-10 整天，S05 產線的 SMT 印刷機，前刮刀的壓力是多少，是否有異常？"
+        print(f"\n[4/4] 💬 使用者提問: {prompt}", flush=True)
+        print("⏳ DeepAgent 思考中並調用 MCP Tools ...\n", flush=True)
 
-    result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
+        result = await agent.ainvoke({"messages": [{"role": "user", "content": prompt}]})
 
-    # 印出工具呼叫過程
-    print("==================================================")
-    print("🔍 [DeepAgent 工具調用軌跡 (Tool Calls)]")
-    print("==================================================")
-    for msg in result["messages"]:
-        for tc in extract_tool_calls(msg):
-            print(f"🔧 [LLM 調用工具] : {tc['name']}\n   傳入參數 : {tc['args']}\n")
-        if getattr(msg, "type", None) == "tool":
-            preview = str(msg.content)[:200] + "..." if len(str(msg.content)) > 200 else str(msg.content)
-            print(f"📦 [MCP Server 回傳] ({getattr(msg, 'name', 'tool')}):\n   {preview}\n")
+        # 印出工具呼叫過程
+        print("==================================================", flush=True)
+        print("🔍 [DeepAgent 工具調用軌跡 (Tool Calls)]", flush=True)
+        print("==================================================", flush=True)
+        for msg in result["messages"]:
+            for tc in extract_tool_calls(msg):
+                print(f"🔧 [LLM 調用工具] : {tc['name']}\n   傳入參數 : {tc['args']}\n", flush=True)
+            if getattr(msg, "type", None) == "tool":
+                preview = str(msg.content)[:200] + "..." if len(str(msg.content)) > 200 else str(msg.content)
+                print(f"📦 [MCP Server 回傳] ({getattr(msg, 'name', 'tool')}):\n   {preview}\n", flush=True)
 
-    # 印出最終分析結果
-    print("==================================================")
-    print("🎯 [DeepAgent 最終分析回覆]")
-    print("==================================================")
-    print(extract_text(result["messages"][-1].content))
+        # 印出最終分析結果
+        print("==================================================", flush=True)
+        print("🎯 [DeepAgent 最終分析回覆]", flush=True)
+        print("==================================================", flush=True)
+        print(extract_text(result["messages"][-1].content), flush=True)
 
-    # 儲存超完整格式 JSON
-    saved_path = save_agent_result(result, prompt)
-    print(f"\n💾 [已儲存完整生命週期 JSON 結果] -> {saved_path}")
+        # 儲存超完整格式 JSON
+        saved_path = save_agent_result(result, prompt)
+        print(f"\n💾 [已儲存完整生命週期 JSON 結果] -> {saved_path}", flush=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
