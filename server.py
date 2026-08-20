@@ -75,11 +75,12 @@ def _extract_columns(schema: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "doc": field.get("doc", "")
             })
 
-    cols.append({
-        "column_name": "event_time",
-        "type": "TIMESTAMP",
-        "doc": "標準化時間過濾欄位 (格式: YYYY-MM-DD HH:MM:SS)，強烈建議在 WHERE 中使用"
-    })
+    if not any(c.get("column_name", "").lower() == "event_time" for c in cols):
+        cols.append({
+            "column_name": "event_time",
+            "type": "TIMESTAMP",
+            "doc": "標準化時間過濾欄位 (格式: YYYY-MM-DD HH:MM:SS)，強烈建議在 WHERE 中使用"
+        })
     return cols
 
 def _resolve_data_file(table_name: str) -> Optional[Path]:
@@ -310,8 +311,13 @@ def get_table_schema(table_name: str) -> str:
         records = _load_and_flatten_records(clean_name)
         if not records:
             return f"Error: Table '{table_name}' (canonical: '{clean_name}') not found in schemas or subscribed data."
-        fields_info = [{"column_name": k, "type": _simplify_type(k, "TEXT"), "doc": ""} for k in records[0].keys()]
-        if not any(f["column_name"] == "event_time" for f in fields_info):
+        seen_cols = set()
+        fields_info = []
+        for k in records[0].keys():
+            if k and k.lower() not in seen_cols:
+                seen_cols.add(k.lower())
+                fields_info.append({"column_name": k, "type": _simplify_type(k, "TEXT"), "doc": ""})
+        if not any(f["column_name"].lower() == "event_time" for f in fields_info):
             fields_info.append({
                 "column_name": "event_time",
                 "type": "TIMESTAMP",
@@ -367,40 +373,44 @@ def execute_sql_query(sql_query: str) -> Dict[str, Any]:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
 
-    for t in used_canonical_tables:
-        records = _load_and_flatten_records(t)
-        schema = SCHEMAS.get(t, {})
-        schema_cols = [c["column_name"] for c in _extract_columns(schema) if c.get("column_name")]
-
-        # 雙向融合 Schema 欄位與 Data 實際出現的欄位
-        if records:
-            cols = list(dict.fromkeys(schema_cols + list(records[0].keys())))
-        else:
-            cols = schema_cols
-
-        # 動態建立 SQLite 資料表
-        col_defs = ", ".join([f'"{c}" TEXT' for c in cols if c])
-        conn.execute(f'CREATE TABLE "{t}" ({col_defs})')
-
-        if records:
-            placeholders = ", ".join(["?"] * len(cols))
-            insert_sql = f'INSERT INTO "{t}" VALUES ({placeholders})'
-            # 支援大小寫不敏感取值 (先查原名 -> 小寫 -> 大寫)
-            rows = []
-            for r in records:
-                row = []
-                for c in cols:
-                    val = r.get(c)
-                    if val is None and isinstance(c, str):
-                        val = r.get(c.lower())
-                    if val is None and isinstance(c, str):
-                        val = r.get(c.upper())
-                    row.append(str(val) if val is not None else None)
-                rows.append(row)
-            conn.executemany(insert_sql, rows)
-
-    # 5. 執行 SQL (Self-Healing 捕捉 Error 回傳給 LLM 修正)
     try:
+        for t in used_canonical_tables:
+            records = _load_and_flatten_records(t)
+            if records:
+                # ponytail: pure-data-columns | Ceiling: Relies on first record keys for table definition. Upgrade path: scan all records if schema-less polymorphic keys exist.
+                seen_cols = set()
+                cols = []
+                for c in records[0].keys():
+                    if c and c.lower() not in seen_cols:
+                        seen_cols.add(c.lower())
+                        cols.append(c)
+            else:
+                # 無真實資料 (空表 / 尚未訂閱)：使用 Schema 建立空表，讓 SQL 正常回傳 0 筆而非炸出 no such table
+                schema = SCHEMAS.get(t, {})
+                cols = [c["column_name"] for c in _extract_columns(schema) if c.get("column_name")]
+
+            # 動態建立 SQLite 資料表
+            col_defs = ", ".join([f'"{c}" TEXT' for c in cols if c])
+            conn.execute(f'CREATE TABLE "{t}" ({col_defs})')
+
+            if records:
+                placeholders = ", ".join(["?"] * len(cols))
+                insert_sql = f'INSERT INTO "{t}" VALUES ({placeholders})'
+                # 支援大小寫不敏感取值 (先查原名 -> 小寫 -> 大寫)
+                rows = []
+                for r in records:
+                    row = []
+                    for c in cols:
+                        val = r.get(c)
+                        if val is None and isinstance(c, str):
+                            val = r.get(c.lower())
+                        if val is None and isinstance(c, str):
+                            val = r.get(c.upper())
+                        row.append(str(val) if val is not None else None)
+                    rows.append(row)
+                conn.executemany(insert_sql, rows)
+
+        # 5. 執行 SQL (Self-Healing 捕捉 Error 回傳給 LLM 修正)
         cursor = conn.execute(clean_sql)
         rows = [dict(row) for row in cursor.fetchall()]
         conn.close()

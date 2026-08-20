@@ -45,7 +45,7 @@ async def main():
             sql_test = (
                 "SELECT line, machine_name, front_pressure, rear_pressure, event_time "
                 "FROM aiot_smt_printer_real_processing_data_wihn2 "
-                "ORDER BY event_time DESC LIMIT 3"
+                "ORDER BY event_time DESC"
             )
             res3 = await session.call_tool(name="execute_sql_query", arguments={"sql_query": sql_test})
             print(res3.content[0].text if res3.content else "無內容")

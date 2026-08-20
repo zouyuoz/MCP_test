@@ -5,7 +5,6 @@ import os
 import sys
 from datetime import datetime
 from dotenv import load_dotenv
-from deepagents import create_deep_agent
 from langchain_core.messages import messages_to_dict
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -194,6 +193,7 @@ async def main():
 5. 唯讀與自我修復 (Self-Healing)：僅支援 SELECT 查詢。若 `execute_sql_query` 執行回傳錯誤，請閱讀提示修正後重試。
 6. 專業總結：取得真實數據後，結合 SMT 製造專業領域知識，向使用者提供結構化、客觀且具洞察力的分析與改善建議。"""
 
+        from deepagents import create_deep_agent
         agent = create_deep_agent(model=model, tools=tools, system_prompt=system_prompt)
 
         # 測試提問範例
