@@ -31,12 +31,12 @@ async def main():
 
             # 4. 測試呼叫 Tool 1: list_available_tables
             print("=== [4/6] 測試 1: list_available_tables ===")
-            res1 = await session.call_tool(name="list_available_tables", arguments={"keyword": "printer"})
+            res1 = await session.call_tool(name="list_available_tables", arguments={"keyword": "aoi"})
             print(res1.content[0].text if res1.content else "無內容")
 
             # 5. 測試呼叫 Tool 2: get_table_schema
             print("\n=== [5/6] 測試 2: get_table_schema ===")
-            res2 = await session.call_tool(name="get_table_schema", arguments={"table_name": "aiot_smt_printer_real_processing_data_wihn2"})
+            res2 = await session.call_tool(name="get_table_schema", arguments={"table_name": "oeedetail"})
             print(res2.content[0].text if res2.content else "無內容")
 
             # 6. 測試呼叫 Tool 3: execute_sql_query (含 AVG 統計與 event_time 時間過濾)
